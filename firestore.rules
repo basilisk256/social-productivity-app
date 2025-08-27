@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // PUBLIC profile
+    match /profiles/{uid} {
+      allow read: if true;
+      allow create, update: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // PRIVATE profile (sensitive fields)
+    match /profilesPrivate/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Leaderboard: user can only write their own doc
+    match /leaderboards/global/scores/{uid} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Friends: only actor can write their subtree
+    match /friends/{uid}/{subcollection=**}/{doc} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Builds
+    match /builds/{buildId} {
+      allow read: if resource.data.isPublic == true || (
+        request.auth != null && request.auth.uid == resource.data.ownerId
+      );
+      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if request.auth != null && request.auth.uid == resource.data.ownerId;
+    }
+
+    // Likes (one per user)
+    match /likes/{buildId}/by/{uid} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Diagnostics (for debugging)
+    match /diagnostics/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Users collection (main user data)
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    match /builds/{buildId} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /tasks/{taskId} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /activities/{activityId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

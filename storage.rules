@@ -1,0 +1,19 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /profilePhotos/{uid}/{filename} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+    
+    // Private ID uploads (dev placeholder)
+    match /idUploads/{uid}/{filename} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    
+    // Diagnostics (for debugging)
+    match /diagnostics/{uid}/{filename} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}
