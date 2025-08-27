@@ -192,22 +192,53 @@ export const AuthProvider = ({ children }) => {
     try {
       console.log('AuthContext: completeOnboarding called with data:', data);
       
-      if (!currentUser) throw new Error("Not signed in.");
-      const uid = currentUser.uid;
-
       // Import Firebase functions
       const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
       const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
-      const { storage, db } = await import('../lib/firebase');
+      const { createUserWithEmailAndPassword, sendEmailVerification } = await import('firebase/auth');
+      const { storage, db, auth } = await import('../lib/firebase');
 
-      // 1) upload avatar
+      let uid = null;
+      let user = null;
+
+      // 1) Create user account if not exists
+      if (!currentUser) {
+        console.log('Creating new user account...');
+        try {
+          const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+          user = userCredential.user;
+          uid = user.uid;
+          console.log('User account created:', uid);
+          
+          // Send email verification
+          await sendEmailVerification(user);
+          console.log('Email verification sent');
+        } catch (error) {
+          if (error.code === 'auth/email-already-in-use') {
+            // User exists, try to sign in
+            console.log('User exists, signing in...');
+            const { signInWithEmailAndPassword } = await import('firebase/auth');
+            const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
+            user = userCredential.user;
+            uid = user.uid;
+            console.log('User signed in:', uid);
+          } else {
+            throw error;
+          }
+        }
+      } else {
+        uid = currentUser.uid;
+        user = currentUser;
+      }
+
+      // 2) upload avatar
       console.log('Uploading profile photo...');
       const avatarRef = ref(storage, `profilePhotos/${uid}/${uid}.jpg`);
       await uploadBytes(avatarRef, data.profilePhotoFile);
       const photoURL = await getDownloadURL(avatarRef);
       console.log('Profile photo uploaded:', photoURL);
 
-      // 2) (optional) upload ID (private)
+      // 3) (optional) upload ID (private)
       let idPath = null;
       if (data.idFile instanceof File) {
         console.log('Uploading ID file...');
@@ -219,7 +250,7 @@ export const AuthProvider = ({ children }) => {
 
       const now = serverTimestamp();
 
-      // 3) write public + private docs
+      // 4) write public + private docs
       console.log('Writing documents to Firestore...');
       await Promise.all([
         setDoc(doc(db, "profiles", uid), {
@@ -230,7 +261,7 @@ export const AuthProvider = ({ children }) => {
           createdAt: now,
           updatedAt: now,
           verification: {
-            email: currentUser.emailVerified ? "verified" : "unverified",
+            email: user.emailVerified ? "verified" : "unverified",
             idCheck: idPath ? "submitted" : "unverified",
           },
           stats: { score: 0, streak: 0 },
@@ -247,18 +278,18 @@ export const AuthProvider = ({ children }) => {
 
       console.log('All documents written successfully');
 
-      // 4) flip the flag immediately so App.js switches views without waiting for snapshot lag
+      // 5) flip the flag immediately so App.js switches views without waiting for snapshot lag
       setHasCompletedOnboarding(true);
       console.log('AuthContext: hasCompletedOnboarding set to true');
       
-      // 5) Update user profile state
+      // 6) Update user profile state
       setUserProfile(prev => ({
         ...prev,
         realName: data.realName,
         photoURL,
         handle: data.username?.trim() || uid.slice(0, 6),
         verification: {
-          email: currentUser.emailVerified ? "verified" : "unverified",
+          email: user.emailVerified ? "verified" : "unverified",
           idCheck: idPath ? "submitted" : "unverified",
         },
         stats: { score: 0, streak: 0 },
